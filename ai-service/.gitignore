@@ -1,0 +1,16 @@
+# Python & Virtual Environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Models & Artifacts
+models/*
+!models/.gitkeep

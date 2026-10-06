@@ -1,0 +1,2 @@
+# Models directory for trained classifiers (*.joblib, etc.)
+# Run `python training/train_classifier.py` to generate model artifacts.
