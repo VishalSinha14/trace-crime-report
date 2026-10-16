@@ -12,6 +12,7 @@ import { initializeSockets } from './sockets';
 import authRoutes from './routes/auth.routes';
 import incidentRoutes from './routes/incident.routes';
 import mapRoutes from './routes/map.routes';
+import safeRouteRoutes from './routes/saferoute.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import notificationRoutes from './routes/notification.routes';
 import adminRoutes from './routes/admin.routes';
@@ -60,6 +61,7 @@ app.get('/api/health', async (_req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/incidents', incidentRoutes);
 app.use('/api/map', mapRoutes);
+app.use('/api/map', safeRouteRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);

@@ -168,6 +168,26 @@ export const api = {
     return res.json();
   },
 
+  // Safe Route
+  async getSafeRoute(
+    originLat: number, originLng: number,
+    destLat: number, destLng: number,
+    mode: 'walking' | 'driving' = 'walking'
+  ) {
+    const params = new URLSearchParams({
+      originLat: String(originLat),
+      originLng: String(originLng),
+      destLat: String(destLat),
+      destLng: String(destLng),
+      mode,
+    });
+    const res = await fetch(`${API_BASE}/map/safe-route?${params.toString()}`, {
+      headers: getAuthHeader(),
+    });
+    if (!res.ok) throw new Error('Failed to compute safe route');
+    return res.json();
+  },
+
   // Analytics
   async getAnalyticsOverview() {
     const res = await fetch(`${API_BASE}/analytics/overview`, {

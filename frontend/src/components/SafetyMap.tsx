@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import { Incident } from '../services/api';
+import { RouteResult } from './SafeRoutePanel';
 
 interface SafetyMapProps {
   incidents: Incident[];
@@ -11,6 +12,14 @@ interface SafetyMapProps {
   onSetPinLocation?: (loc: { lat: number; lng: number }) => void;
   center?: [number, number];
   zoom?: number;
+  // ─── Safe Route Props ───────────────────────────────────────────────
+  routeMode?: boolean;
+  routePickingTarget?: 'origin' | 'destination' | null;
+  originLocation?: { lat: number; lng: number } | null;
+  destinationLocation?: { lat: number; lng: number } | null;
+  routeResults?: RouteResult[] | null;
+  activeRouteIndex?: number;
+  onSetRoutePoint?: (loc: { lat: number; lng: number }) => void;
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -19,6 +28,9 @@ const SEVERITY_COLORS: Record<string, string> = {
   MEDIUM: '#f59e0b',
   LOW: '#22c55e',
 };
+
+// Route line colors
+const ROUTE_COLORS = ['#22c55e', '#f59e0b', '#f97316']; // green, amber, orange
 
 export const SafetyMap: React.FC<SafetyMapProps> = ({
   incidents,
@@ -29,11 +41,25 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
   onSetPinLocation,
   center = [18.5204, 73.8567], // Pune center
   zoom = 13,
+  // Safe Route props
+  routeMode = false,
+  routePickingTarget = null,
+  originLocation = null,
+  destinationLocation = null,
+  routeResults = null,
+  activeRouteIndex = 0,
+  onSetRoutePoint,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersLayerRef = useRef<L.LayerGroup | null>(null);
   const reportMarkerRef = useRef<L.Marker | null>(null);
+
+  // Safe Route refs
+  const originMarkerRef = useRef<L.Marker | null>(null);
+  const destMarkerRef = useRef<L.Marker | null>(null);
+  const routeLayerRef = useRef<L.LayerGroup | null>(null);
+  const hotspotLayerRef = useRef<L.LayerGroup | null>(null);
 
   // Initialize Map
   useEffect(() => {
@@ -61,6 +87,13 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
 
     const markersLayer = L.layerGroup().addTo(map);
     markersLayerRef.current = markersLayer;
+
+    const routeLayer = L.layerGroup().addTo(map);
+    routeLayerRef.current = routeLayer;
+
+    const hotspotLayer = L.layerGroup().addTo(map);
+    hotspotLayerRef.current = hotspotLayer;
+
     mapInstanceRef.current = map;
 
     return () => {
@@ -69,7 +102,7 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
     };
   }, []);
 
-  // Handle map click in report mode
+  // Handle map click — report mode OR route mode
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
@@ -77,6 +110,8 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
     const handleClick = (e: L.LeafletMouseEvent) => {
       if (reportMode && onSetPinLocation) {
         onSetPinLocation({ lat: e.latlng.lat, lng: e.latlng.lng });
+      } else if (routeMode && routePickingTarget && onSetRoutePoint) {
+        onSetRoutePoint({ lat: e.latlng.lat, lng: e.latlng.lng });
       }
     };
 
@@ -84,7 +119,7 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
     return () => {
       map.off('click', handleClick);
     };
-  }, [reportMode, onSetPinLocation]);
+  }, [reportMode, onSetPinLocation, routeMode, routePickingTarget, onSetRoutePoint]);
 
   // Render report marker pin
   useEffect(() => {
@@ -123,6 +158,182 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
       }
     }
   }, [pinLocation, reportMode]);
+
+  // ─── Safe Route: Origin Marker ──────────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (originLocation && routeMode) {
+      const originIcon = L.divIcon({
+        className: 'safe-route-origin-pin',
+        html: `
+          <div style="
+            width: 36px; height: 36px;
+            background: #22c55e;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 16px rgba(34,197,94,0.5), 0 4px 12px rgba(0,0,0,0.3);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900; font-size: 14px; color: white;
+            font-family: system-ui, sans-serif;
+          ">A</div>
+        `,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
+
+      if (originMarkerRef.current) {
+        originMarkerRef.current.setLatLng([originLocation.lat, originLocation.lng]);
+        originMarkerRef.current.setIcon(originIcon);
+      } else {
+        originMarkerRef.current = L.marker([originLocation.lat, originLocation.lng], { icon: originIcon }).addTo(map);
+      }
+    } else {
+      if (originMarkerRef.current) {
+        originMarkerRef.current.remove();
+        originMarkerRef.current = null;
+      }
+    }
+  }, [originLocation, routeMode]);
+
+  // ─── Safe Route: Destination Marker ─────────────────────────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+
+    if (destinationLocation && routeMode) {
+      const destIcon = L.divIcon({
+        className: 'safe-route-dest-pin',
+        html: `
+          <div style="
+            width: 36px; height: 36px;
+            background: #ef4444;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 16px rgba(239,68,68,0.5), 0 4px 12px rgba(0,0,0,0.3);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 900; font-size: 14px; color: white;
+            font-family: system-ui, sans-serif;
+          ">B</div>
+        `,
+        iconSize: [36, 36],
+        iconAnchor: [18, 18],
+      });
+
+      if (destMarkerRef.current) {
+        destMarkerRef.current.setLatLng([destinationLocation.lat, destinationLocation.lng]);
+        destMarkerRef.current.setIcon(destIcon);
+      } else {
+        destMarkerRef.current = L.marker([destinationLocation.lat, destinationLocation.lng], { icon: destIcon }).addTo(map);
+      }
+    } else {
+      if (destMarkerRef.current) {
+        destMarkerRef.current.remove();
+        destMarkerRef.current = null;
+      }
+    }
+  }, [destinationLocation, routeMode]);
+
+  // ─── Safe Route: Draw Route Polylines + Hotspot circles ─────────────────
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const routeLayer = routeLayerRef.current;
+    const hotspotLayer = hotspotLayerRef.current;
+    if (!map || !routeLayer || !hotspotLayer) return;
+
+    // Clear previous
+    routeLayer.clearLayers();
+    hotspotLayer.clearLayers();
+
+    if (!routeResults || routeResults.length === 0 || !routeMode) return;
+
+    // Draw routes in reverse order so the active one is on top
+    const sorted = [...routeResults].map((r, i) => ({ ...r, originalIndex: i }));
+    sorted.sort((a, b) => {
+      if (a.originalIndex === activeRouteIndex) return 1; // draw last (on top)
+      if (b.originalIndex === activeRouteIndex) return -1;
+      return 0;
+    });
+
+    sorted.forEach((route) => {
+      const isActive = route.originalIndex === activeRouteIndex;
+      const coords: L.LatLngTuple[] = route.geometry.coordinates.map(
+        (c: [number, number]) => [c[1], c[0]] as L.LatLngTuple
+      );
+
+      const color = isActive
+        ? (route.safety_score >= 70 ? '#22c55e' : route.safety_score >= 40 ? '#f59e0b' : '#ef4444')
+        : '#64748b';
+
+      // Shadow line (wider, darker) for depth
+      if (isActive) {
+        const shadow = L.polyline(coords, {
+          color: '#000000',
+          weight: 10,
+          opacity: 0.25,
+          interactive: false,
+        });
+        routeLayer.addLayer(shadow);
+      }
+
+      // Main route line
+      const polyline = L.polyline(coords, {
+        color,
+        weight: isActive ? 6 : 3,
+        opacity: isActive ? 0.9 : 0.35,
+        dashArray: isActive ? undefined : '8, 8',
+        lineCap: 'round',
+        lineJoin: 'round',
+      });
+
+      routeLayer.addLayer(polyline);
+
+      // Hotspot danger circles — only for the active route
+      if (isActive && route.hotspots) {
+        route.hotspots.forEach((hs) => {
+          const circle = L.circle([hs.lat, hs.lng], {
+            radius: 200,
+            color: '#ef4444',
+            fillColor: '#ef4444',
+            fillOpacity: 0.1,
+            weight: 1.5,
+            opacity: 0.4,
+            dashArray: '4, 6',
+            interactive: false,
+          });
+          hotspotLayer.addLayer(circle);
+        });
+      }
+    });
+
+    // Fit map bounds to the active route
+    const activeRoute = routeResults[activeRouteIndex];
+    if (activeRoute) {
+      const activeCoords: L.LatLngTuple[] = activeRoute.geometry.coordinates.map(
+        (c: [number, number]) => [c[1], c[0]] as L.LatLngTuple
+      );
+      if (activeCoords.length > 0) {
+        map.fitBounds(L.latLngBounds(activeCoords), { padding: [50, 50] });
+      }
+    }
+  }, [routeResults, activeRouteIndex, routeMode]);
+
+  // ─── Clean up route visuals when leaving route mode ─────────────────────
+  useEffect(() => {
+    if (!routeMode) {
+      routeLayerRef.current?.clearLayers();
+      hotspotLayerRef.current?.clearLayers();
+      if (originMarkerRef.current) {
+        originMarkerRef.current.remove();
+        originMarkerRef.current = null;
+      }
+      if (destMarkerRef.current) {
+        destMarkerRef.current.remove();
+        destMarkerRef.current = null;
+      }
+    }
+  }, [routeMode]);
 
   // Render Incident Markers
   useEffect(() => {
@@ -189,6 +400,21 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
       {reportMode && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-cyan-500 text-slate-950 px-5 py-2.5 rounded-full shadow-xl font-semibold text-sm flex items-center gap-2 border border-cyan-200/30">
           <span>📍 Click anywhere on the map to set the incident location</span>
+        </div>
+      )}
+
+      {/* Route mode banner */}
+      {routeMode && routePickingTarget && (
+        <div className={`absolute top-4 left-1/2 -translate-x-1/2 z-[1000] px-5 py-2.5 rounded-full shadow-xl font-semibold text-sm flex items-center gap-2 border ${
+          routePickingTarget === 'origin'
+            ? 'bg-emerald-500 text-white border-emerald-300/50'
+            : 'bg-rose-500 text-white border-rose-300/50'
+        }`}>
+          <span>
+            {routePickingTarget === 'origin'
+              ? '📍 Click the map to set your STARTING point'
+              : '🏁 Click the map to set your DESTINATION'}
+          </span>
         </div>
       )}
 
