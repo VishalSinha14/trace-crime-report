@@ -49,8 +49,12 @@ To apply the complete production schema including spatial types, indexes, and tr
 4. `incident_analysis` — AI model inference results (predicted category, severity, confidence).
 5. `notifications` — Real-time user alert records.
 6. `audit_logs` — Administrative and security audit trail.
-7. `hotspot_snapshots` — Deterministic spatial density grids (`GEOMETRY(Polygon, 4326)`).
-8. `risk_grid` — Spatial polygons for AI risk probability layers (`GEOMETRY(Polygon, 4326)`).
+7. `corroborations` — One-per-user community witness or dispute statements.
+8. `hotspot_snapshots` — Deterministic spatial density grids (`GEOMETRY(Polygon, 4326)`).
+9. `risk_grid` — Spatial polygons for AI risk probability layers (`GEOMETRY(Polygon, 4326)`).
+
+For an existing database, apply `database/migrations/002_add_corroboration.sql`
+after the initial schema.
 
 ---
 

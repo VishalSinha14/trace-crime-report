@@ -264,9 +264,9 @@ export const SafeRoutePanel: React.FC<SafeRoutePanelProps> = ({
                     : 'hover:bg-white/[0.04]'
                 }`}
                 style={{
-                  ringColor: isActive ? color : undefined,
+                  ['--ring-color' as string]: isActive ? color : undefined,
                   borderColor: isActive ? `${color}40` : undefined,
-                }}
+                } as React.CSSProperties}
               >
                 {/* Route Name + Badge */}
                 <div className="flex items-center justify-between mb-3">

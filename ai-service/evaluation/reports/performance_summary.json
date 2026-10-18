@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-10-18 11:47:01",
+  "model_version": "1.0.0-tfidf-logreg",
+  "dataset": {
+    "total_samples": 2033,
+    "train_samples": 1728,
+    "test_samples": 305,
+    "categories": 10,
+    "severity_levels": 4
+  },
+  "classification": {
+    "accuracy": 1.0,
+    "macro_precision": 1.0,
+    "macro_recall": 1.0,
+    "macro_f1": 1.0,
+    "weighted_f1": 1.0
+  },
+  "severity_raw": {
+    "accuracy": 1.0
+  },
+  "severity_with_override": {
+    "accuracy": 1.0
+  }
+}

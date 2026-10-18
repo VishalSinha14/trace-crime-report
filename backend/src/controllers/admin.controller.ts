@@ -3,11 +3,33 @@ import { query } from '../utils/db';
 import { logAudit } from '../services/audit.service';
 import { UserRole } from '../models/types';
 
+function parsePaginationValue(value: unknown, fallback: number, max?: number): number | null {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (typeof rawValue !== 'string' && typeof rawValue !== 'number') {
+    return null;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) {
+    return null;
+  }
+
+  return max === undefined ? parsed : Math.min(max, parsed);
+}
+
 export async function listUsers(req: Request, res: Response): Promise<void> {
   const { search, role, page = '1', limit = '20' } = req.query;
 
-  const pageNum = Math.max(1, Number(page));
-  const limitNum = Math.min(100, Math.max(1, Number(limit)));
+  const pageNum = parsePaginationValue(page, 1);
+  const limitNum = parsePaginationValue(limit, 20, 100);
+  if (pageNum === null || limitNum === null) {
+    res.status(400).json({ error: 'Bad Request', message: 'Page and limit must be positive integers.' });
+    return;
+  }
   const offset = (pageNum - 1) * limitNum;
 
   const conditions: string[] = [];
@@ -115,6 +137,11 @@ export async function updateUserStatus(req: Request<{ id: string }, {}, { isActi
   const { isActive } = req.body;
   const admin = req.user!;
 
+  if (typeof isActive !== 'boolean') {
+    res.status(400).json({ error: 'Bad Request', message: 'isActive must be a boolean.' });
+    return;
+  }
+
   if (id === admin.id && !isActive) {
     res.status(400).json({ error: 'Bad Request', message: 'You cannot deactivate your own account.' });
     return;
@@ -157,8 +184,12 @@ export async function updateUserStatus(req: Request<{ id: string }, {}, { isActi
 export async function getAuditLogs(req: Request, res: Response): Promise<void> {
   const { action, entityType, page = '1', limit = '30' } = req.query;
 
-  const pageNum = Math.max(1, Number(page));
-  const limitNum = Math.min(100, Math.max(1, Number(limit)));
+  const pageNum = parsePaginationValue(page, 1);
+  const limitNum = parsePaginationValue(limit, 30, 100);
+  if (pageNum === null || limitNum === null) {
+    res.status(400).json({ error: 'Bad Request', message: 'Page and limit must be positive integers.' });
+    return;
+  }
   const offset = (pageNum - 1) * limitNum;
 
   const conditions: string[] = [];

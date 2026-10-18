@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { api, Incident, User } from './services/api';
+import { api, Incident, User, CorroborationType } from './services/api';
 import { Navbar } from './components/Navbar';
 import { SafetyMap } from './components/SafetyMap';
 import { ReportModal } from './components/ReportModal';
@@ -11,7 +11,8 @@ import { LandingPage } from './components/LandingPage';
 import { LoginPage } from './components/LoginPage';
 import { RegisterPage } from './components/RegisterPage';
 import { SafeRoutePanel, RouteResult } from './components/SafeRoutePanel';
-import { MapPin, Sparkles, CheckCircle2, Radio, Activity, Crosshair, Layers3, X, Clock3, ShieldAlert, Shield, Navigation } from 'lucide-react';
+import { CorroborateModal } from './components/CorroborateModal';
+import { MapPin, Sparkles, CheckCircle2, Radio, Activity, Crosshair, Layers3, X, Clock3, ShieldAlert, Shield, Navigation, Users } from 'lucide-react';
 
 // ─── Auth screen state ────────────────────────────────────────────────────────
 type AuthScreen = 'landing' | 'login' | 'register';
@@ -62,6 +63,11 @@ export function App() {
   const [routeResults, setRouteResults] = useState<RouteResult[] | null>(null);
   const [activeRouteIndex, setActiveRouteIndex] = useState(0);
   const [routeLoading, setRouteLoading] = useState(false);
+
+  // ─── Corroboration State ────────────────────────────────────────────────
+  const [corroborateIncident, setCorroborateIncident] = useState<Incident | null>(null);
+  // Track per-incident credibility scores returned from the server after corroboration
+  const [incidentCredibility, setIncidentCredibility] = useState<Record<string, { score: number; count: number }>>({});
 
   const [safetyMetrics] = useState<{ score: number; nearbyCount: number }>({
     score: 84,
@@ -141,6 +147,11 @@ export function App() {
         const exists = prev.some((inc) => inc.id === newInc.id);
         if (exists) return prev.map((inc) => (inc.id === newInc.id ? newInc : inc));
         return [newInc, ...prev];
+      });
+
+      socket.on('incident:visibility_changed', (change: { id: string; status: Incident['status']; is_public: boolean }) => {
+        if (change.status === 'VERIFIED' && change.is_public) return;
+        setIncidents((prev) => prev.filter((incident) => incident.id !== change.id));
       });
     });
 
@@ -222,6 +233,16 @@ export function App() {
     setRouteResults(null);
     setActiveRouteIndex(0);
     setRoutePickingTarget('origin');
+  };
+
+  // ─── Corroboration handler ──────────────────────────────────────────────
+  const handleCorroborated = (incidentId: string, score: number, count: number, type: CorroborationType) => {
+    setIncidentCredibility((prev) => ({ ...prev, [incidentId]: { score, count } }));
+    setIncidents((prev) => prev.map((incident) => (
+      incident.id === incidentId
+        ? { ...incident, credibility_score: score, corroboration_count: count, user_corroboration_type: type }
+        : incident
+    )));
   };
 
   // ─── Auth loading splash ──────────────────────────────────────────────────
@@ -375,6 +396,11 @@ export function App() {
                   routeResults={routeResults}
                   activeRouteIndex={activeRouteIndex}
                   onSetRoutePoint={handleSetRoutePoint}
+                  canCorroborate={user?.role === 'CITIZEN'}
+                  onCorroborateFromMap={(incidentId) => {
+                    const inc = incidents.find((i) => i.id === incidentId);
+                    if (inc) setCorroborateIncident(inc);
+                  }}
                 />
               </div>
 
@@ -425,6 +451,9 @@ export function App() {
                         ) : (
                           incidents.slice(0, 40).map((inc) => {
                             const isSelected = selectedIncident?.id === inc.id;
+                            const credib = incidentCredibility[inc.id];
+                            const corrobCount = credib?.count ?? inc.corroboration_count ?? 0;
+                            const hasCorroborated = Boolean(inc.user_corroboration_type);
                             return (
                               <div
                                 key={inc.id}
@@ -450,6 +479,25 @@ export function App() {
                                     <CheckCircle2 className="w-3 h-3" /> Verified
                                   </span>
                                 </div>
+                                {/* Corroboration row */}
+                                {user && (
+                                  <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/[0.06]">
+                                    {corrobCount > 0 ? (
+                                      <span className="text-[9px] text-indigo-300 flex items-center gap-1">
+                                        <Users className="w-3 h-3" /> {corrobCount} {corrobCount === 1 ? 'witness' : 'witnesses'}
+                                      </span>
+                                    ) : (
+                                      <span className="text-[9px] text-slate-600">No witnesses yet</span>
+                                    )}
+                                    <button
+                                      disabled={hasCorroborated}
+                                      onClick={(e) => { e.stopPropagation(); setCorroborateIncident(inc); }}
+                                      className="text-[9px] font-semibold text-indigo-400 hover:text-indigo-300 disabled:text-emerald-300 disabled:bg-emerald-400/10 disabled:border-emerald-400/20 disabled:cursor-default bg-indigo-400/10 hover:bg-indigo-400/20 border border-indigo-400/20 px-2 py-1 rounded-lg transition flex items-center gap-1"
+                                    >
+                                      <Users className="w-3 h-3" /> {hasCorroborated ? 'You corroborated' : 'Witness This'}
+                                    </button>
+                                  </div>
+                                )}
                               </div>
                             );
                           })
@@ -488,6 +536,15 @@ export function App() {
           }
         }}
       />
+
+      {/* Corroboration Modal */}
+      {corroborateIncident && (
+        <CorroborateModal
+          incident={corroborateIncident}
+          onClose={() => setCorroborateIncident(null)}
+          onCorroborated={handleCorroborated}
+        />
+      )}
     </div>
   );
 }

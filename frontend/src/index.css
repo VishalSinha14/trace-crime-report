@@ -138,6 +138,30 @@ body {
 .leaflet-container { background: #0b1220; font-family: var(--font-sans); }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: #f8fafc; }
 
+.corroborate-modal {
+  background: linear-gradient(145deg, rgba(15, 23, 42, .98), rgba(9, 14, 28, .98));
+  border: 1px solid rgba(129, 140, 248, .25);
+  border-radius: 1.25rem;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, .45);
+}
+.corroborate-textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 7rem;
+  border: 1px solid rgba(148, 163, 184, .16);
+  border-radius: .75rem;
+  background: rgba(15, 23, 42, .72);
+  color: #e2e8f0;
+  padding: .75rem;
+  font-size: .75rem;
+  line-height: 1.5;
+  outline: none;
+}
+.corroborate-textarea:focus {
+  border-color: rgba(129, 140, 248, .7);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, .18);
+}
+
 @keyframes trace-shimmer { to { background-position: -200% 0; } }
 @keyframes trace-enter { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes trace-pulse { 70%, 100% { transform: scale(1.55); opacity: 0; } }

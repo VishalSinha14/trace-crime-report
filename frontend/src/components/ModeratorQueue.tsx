@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { io } from 'socket.io-client';
-import { api, Incident } from '../services/api';
-import { CheckCircle2, XCircle, Clock, ShieldAlert, Sparkles, AlertTriangle, Filter } from 'lucide-react';
+import { api, Incident, Corroboration } from '../services/api';
+import { CheckCircle2, XCircle, Clock, ShieldAlert, Sparkles, AlertTriangle, Filter, Users, TrendingUp } from 'lucide-react';
 
 interface ModeratorQueueProps {
   onStatusUpdated?: () => void;
@@ -14,6 +14,10 @@ export const ModeratorQueue: React.FC<ModeratorQueueProps> = ({ onStatusUpdated 
   const [loading, setLoading] = useState(true);
   const [moderationNote, setModerationNote] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  // credibility scores loaded per-incident on demand
+  const [credibilityMap, setCredibilityMap] = useState<Record<string, { score: number; count: number }>>({});
+  const [highCredAlert, setHighCredAlert] = useState<{ incidentId: string; score: number; category: string } | null>(null);
+  const [selectedCorroborations, setSelectedCorroborations] = useState<Corroboration[]>([]);
 
   const fetchIncidents = async () => {
     setLoading(true);
@@ -62,10 +66,40 @@ export const ModeratorQueue: React.FC<ModeratorQueueProps> = ({ onStatusUpdated 
       });
     });
 
+    // High-credibility alert from corroboration system
+    socket.on('incident:high_credibility', (data: { incidentId: string; credibilityScore: number; category: string }) => {
+      setHighCredAlert({ incidentId: data.incidentId, score: data.credibilityScore, category: data.category });
+      setCredibilityMap((prev) => ({
+        ...prev,
+        [data.incidentId]: { score: data.credibilityScore, count: prev[data.incidentId]?.count ?? 0 },
+      }));
+      // Auto-dismiss after 8 seconds
+      setTimeout(() => setHighCredAlert(null), 8000);
+    });
+
     return () => {
       socket.disconnect();
     };
   }, [statusFilter]);
+
+  useEffect(() => {
+    if (!selectedIncident) {
+      setSelectedCorroborations([]);
+      return;
+    }
+    api.getCorroborations(selectedIncident.id)
+      .then((response) => {
+        setSelectedCorroborations(response.corroborations);
+        setCredibilityMap((prev) => ({
+          ...prev,
+          [selectedIncident.id]: {
+            score: response.credibility_score,
+            count: response.corroboration_count,
+          },
+        }));
+      })
+      .catch((err) => console.error('Failed to load corroborations:', err));
+  }, [selectedIncident]);
 
   const handleUpdateStatus = async (newStatus: string) => {
     if (!selectedIncident) return;
@@ -74,6 +108,8 @@ export const ModeratorQueue: React.FC<ModeratorQueueProps> = ({ onStatusUpdated 
       await api.updateIncidentStatus(selectedIncident.id, newStatus, moderationNote);
       setModerationNote('');
       await fetchIncidents();
+      setSelectedIncident(null);
+      setSelectedCorroborations([]);
       if (onStatusUpdated) onStatusUpdated();
     } catch (err: any) {
       alert(err.message || 'Status update failed');
@@ -84,6 +120,20 @@ export const ModeratorQueue: React.FC<ModeratorQueueProps> = ({ onStatusUpdated 
 
   return (
     <div className="w-full h-full flex flex-col gap-6">
+      {/* High-credibility real-time toast */}
+      {highCredAlert && (
+        <div className="flex items-start gap-3 p-4 bg-indigo-500/15 border border-indigo-400/40 rounded-2xl animate-pulse">
+          <TrendingUp className="w-5 h-5 text-indigo-400 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-xs font-bold text-indigo-300">High-Credibility Incident Alert</p>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Incident <code className="text-indigo-300">{highCredAlert.incidentId.slice(0, 8)}</code> ({highCredAlert.category?.replace('_', ' ')}) reached credibility score {highCredAlert.score}/100 from community witnesses.
+            </p>
+          </div>
+          <button onClick={() => setHighCredAlert(null)} className="text-slate-500 hover:text-white text-xs">✕</button>
+        </div>
+      )}
+
       {/* Header & Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 bg-slate-900 border border-slate-800 rounded-3xl shadow-xl">
         <div>
@@ -179,6 +229,16 @@ export const ModeratorQueue: React.FC<ModeratorQueueProps> = ({ onStatusUpdated 
                       <span>📍 {inc.location_area || 'Pune Metro'}</span>
                       <span>{new Date(inc.occurred_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
+
+                    {/* Credibility badge */}
+                    {(credibilityMap[inc.id] || inc.credibility_score > 0 || (inc.corroboration_count ?? 0) > 0) && (
+                      <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-slate-700/50">
+                        <Users className="w-3 h-3 text-indigo-400" />
+                        <span className="text-[10px] text-indigo-300 font-semibold">
+                          {(credibilityMap[inc.id]?.score ?? inc.credibility_score)}/100 community credibility · {credibilityMap[inc.id]?.count ?? inc.corroboration_count ?? 0} statements
+                        </span>
+                      </div>
+                    )}
                   </button>
                 );
               })
@@ -260,6 +320,26 @@ export const ModeratorQueue: React.FC<ModeratorQueueProps> = ({ onStatusUpdated 
                   </div>
                 </div>
               </div>
+
+              {/* Moderation Notes Input */}
+              {selectedCorroborations.length > 0 && (
+                <div>
+                  <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-2">
+                    Community Statements ({selectedCorroborations.length})
+                  </label>
+                  <div className="space-y-2 max-h-56 overflow-y-auto">
+                    {selectedCorroborations.map((corroboration) => (
+                      <div key={corroboration.id} className="rounded-xl bg-slate-800/60 border border-slate-700/60 p-3">
+                        <div className="flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                          <span className="font-semibold text-indigo-300">{corroboration.type.replace('_', ' ')}</span>
+                          <span>{corroboration.author_name} · {new Date(corroboration.created_at).toLocaleDateString()}</span>
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed mt-1.5">{corroboration.statement}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Moderation Notes Input */}
               <div>

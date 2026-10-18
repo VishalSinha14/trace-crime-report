@@ -28,6 +28,7 @@ export type NotificationType =
   | 'NEARBY_INCIDENT'
   | 'HIGH_PRIORITY_ALERT'
   | 'INFO_REQUEST'
+  | 'CORROBORATED'
   | 'SYSTEM';
 
 export interface User {
@@ -60,12 +61,26 @@ export interface Incident {
   occurred_at: string;
   is_public: boolean;
   moderation_notes?: string | null;
+  credibility_score: number;
+  corroboration_count?: number;
   created_at: string;
   updated_at: string;
   // Joins
   reporter_name?: string;
   reporter_email?: string;
   media_count?: number;
+}
+
+export type CorroborationType = 'WITNESSED' | 'AFFECTED' | 'FALSE_REPORT';
+
+export interface Corroboration {
+  id: string;
+  incident_id?: string;
+  type: CorroborationType;
+  statement: string;
+  author_name: string;
+  created_at: string;
+  is_own?: boolean;
 }
 
 export interface IncidentMedia {

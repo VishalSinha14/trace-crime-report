@@ -12,7 +12,7 @@ FROM information_schema.tables
 WHERE table_schema = 'public' 
   AND table_name IN (
     'users', 'incidents', 'incident_media', 'incident_analysis',
-    'notifications', 'audit_logs', 'hotspot_snapshots', 'risk_grid'
+    'notifications', 'audit_logs', 'corroborations', 'hotspot_snapshots', 'risk_grid'
   )
 ORDER BY table_name;
 
@@ -35,7 +35,8 @@ SELECT
   (SELECT COUNT(*) FROM incidents) AS incidents_count,
   (SELECT COUNT(*) FROM incident_analysis) AS analysis_count,
   (SELECT COUNT(*) FROM notifications) AS notifications_count,
-  (SELECT COUNT(*) FROM audit_logs) AS audit_logs_count;
+  (SELECT COUNT(*) FROM audit_logs) AS audit_logs_count,
+  (SELECT COUNT(*) FROM corroborations) AS corroborations_count;
 
 \echo '\n=== 6. GEOMETRY VALIDITY CHECK (Must be 0 invalid) ==='
 SELECT 

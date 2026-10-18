@@ -60,6 +60,7 @@ DO $$ BEGIN
     'NEARBY_INCIDENT',
     'HIGH_PRIORITY_ALERT',
     'INFO_REQUEST',
+    'CORROBORATED',
     'SYSTEM'
   );
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -120,6 +121,9 @@ CREATE TABLE IF NOT EXISTS incidents (
 
   -- Moderation notes (admin-only)
   moderation_notes TEXT,
+
+  -- Community corroboration score, recalculated from corroborations
+  credibility_score INTEGER NOT NULL DEFAULT 0,
 
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -198,12 +202,28 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   entity_id     UUID,
   metadata      JSONB,                    -- Flexible extra data
   ip_address    VARCHAR(45),
+  user_agent    TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user ON audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
+
+-- ─── Citizen Corroborations ────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS corroborations (
+  id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  incident_id   UUID NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
+  user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  type          TEXT NOT NULL CHECK (type IN ('WITNESSED', 'AFFECTED', 'FALSE_REPORT')),
+  statement     TEXT NOT NULL CHECK (char_length(statement) BETWEEN 10 AND 500),
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (incident_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_corroborations_incident
+  ON corroborations(incident_id);
 
 -- ─── Hotspot Snapshots (precomputed) ────────────────────────────────────────
 

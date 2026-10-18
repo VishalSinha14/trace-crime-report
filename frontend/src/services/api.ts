@@ -28,6 +28,29 @@ export interface Incident {
   reporter_name?: string;
   reporter_email?: string;
   media_count?: number;
+  credibility_score: number;
+  corroboration_count?: number;
+  user_corroboration_type?: CorroborationType | null;
+}
+
+export type CorroborationType = 'WITNESSED' | 'AFFECTED' | 'FALSE_REPORT';
+
+export interface Corroboration {
+  id: string;
+  type: CorroborationType;
+  statement: string;
+  author_name: string;
+  created_at: string;
+  is_own?: boolean;
+}
+
+export interface CorroborationsResponse {
+  corroborations: Corroboration[];
+  corroboration_count: number;
+  credibility_score: number;
+  breakdown: { WITNESSED: number; AFFECTED: number; FALSE_REPORT: number };
+  user_corroboration_type: CorroborationType | null;
+  pagination?: { page: number; limit: number; total: number; totalPages: number };
 }
 
 export interface NotificationItem {
@@ -274,5 +297,30 @@ export const api = {
       method: 'PATCH',
       headers: getAuthHeader(),
     });
+  },
+
+  // Corroborations
+  async submitCorroboration(
+    incidentId: string,
+    type: CorroborationType,
+    statement: string
+  ): Promise<{ success: boolean; credibility_score: number; corroboration_count: number }> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}/corroborate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeader() },
+      body: JSON.stringify({ type, statement }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to submit corroboration');
+    return data;
+  },
+
+  async getCorroborations(incidentId: string): Promise<CorroborationsResponse> {
+    const res = await fetch(`${API_BASE}/incidents/${incidentId}/corroborations`, {
+      headers: getAuthHeader(),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.message || 'Failed to fetch corroborations');
+    return data;
   },
 };

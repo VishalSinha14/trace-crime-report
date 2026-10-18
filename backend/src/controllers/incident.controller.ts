@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { query, getClient } from '../utils/db';
 import { classifyIncident, estimateSeverity } from '../services/ai.service';
-import { logAudit } from '../services/audit.service';
+import { logAudit, logAuditWithClient } from '../services/audit.service';
 import { createNotification } from '../services/notification.service';
 import { broadcastToRole, broadcastPublic, broadcastToUser } from '../sockets';
 import {
@@ -121,6 +121,8 @@ export async function getIncidents(req: Request, res: Response): Promise<void> {
         i.location_area,
         i.occurred_at,
         i.is_public,
+        i.credibility_score,
+        (SELECT COUNT(*) FROM corroborations c WHERE c.incident_id = i.id)::int AS corroboration_count,
         ${isStaff ? 'i.moderation_notes,' : ''}
         i.created_at,
         i.updated_at,
@@ -370,10 +372,16 @@ export async function updateIncidentStatus(
   const { status, moderation_notes, is_public } = req.body;
   const user = req.user!;
 
+  const client = await getClient();
+  let clientReleased = false;
   try {
-    // Fetch previous status
-    const currentRes = await query('SELECT * FROM incidents WHERE id = $1', [id]);
+    await client.query('BEGIN');
+    // Lock the row so concurrent moderation decisions cannot overwrite each other.
+    const currentRes = await client.query('SELECT * FROM incidents WHERE id = $1 FOR UPDATE', [id]);
     if (currentRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      clientReleased = true;
       res.status(404).json({ error: 'Not Found', message: 'Incident not found.' });
       return;
     }
@@ -381,7 +389,7 @@ export async function updateIncidentStatus(
     const current = currentRes.rows[0];
     const shouldBePublic = is_public !== undefined ? is_public : status === 'VERIFIED' || status === 'RESOLVED';
 
-    const updateRes = await query(
+    const updateRes = await client.query(
       `UPDATE incidents
        SET status = $1::incident_status,
            is_public = $2,
@@ -394,8 +402,7 @@ export async function updateIncidentStatus(
 
     const updatedIncident = updateRes.rows[0];
 
-    // Log Audit
-    await logAudit({
+    await logAuditWithClient(client, {
       userId: user.id,
       action: 'STATUS_CHANGED',
       entityType: 'incidents',
@@ -404,6 +411,10 @@ export async function updateIncidentStatus(
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
     });
+
+    await client.query('COMMIT');
+    client.release();
+    clientReleased = true;
 
     // Notify original reporter
     await createNotification(
@@ -420,6 +431,11 @@ export async function updateIncidentStatus(
     if (shouldBePublic && status === 'VERIFIED') {
       broadcastPublic('incident:verified', updatedIncident);
     }
+    broadcastPublic('incident:visibility_changed', {
+      id: updatedIncident.id,
+      status: updatedIncident.status,
+      is_public: updatedIncident.is_public,
+    });
     broadcastToRole('MODERATOR', 'incident:updated', updatedIncident);
     broadcastToRole('ADMIN', 'incident:updated', updatedIncident);
     broadcastToUser(updatedIncident.user_id, 'incident:my_update', updatedIncident);
@@ -429,6 +445,10 @@ export async function updateIncidentStatus(
       incident: updatedIncident,
     });
   } catch (err: any) {
+    if (!clientReleased) {
+      await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    }
     console.error('updateIncidentStatus error:', err);
     res.status(500).json({ error: 'Internal Server Error', message: 'Failed to update incident status.' });
   }

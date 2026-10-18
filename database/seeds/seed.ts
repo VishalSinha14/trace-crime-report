@@ -440,7 +440,7 @@ async function seedAnalysis(): Promise<void> {
 async function printStats(): Promise<void> {
   console.log('\n📈 Database Statistics:');
 
-  const tables = ['users', 'incidents', 'incident_analysis', 'notifications', 'audit_logs'];
+  const tables = ['users', 'incidents', 'incident_analysis', 'notifications', 'audit_logs', 'corroborations'];
   for (const table of tables) {
     const result = await pool.query(`SELECT COUNT(*) as count FROM ${table}`);
     console.log(`  ${table}: ${parseInt(result.rows[0].count).toLocaleString()} rows`);
@@ -495,7 +495,7 @@ async function main() {
   try {
     // Clear existing data
     console.log('🗑️  Clearing existing data...');
-    await pool.query('TRUNCATE audit_logs, notifications, incident_analysis, incident_media, incidents, users CASCADE');
+    await pool.query('TRUNCATE corroborations, audit_logs, notifications, incident_analysis, incident_media, incidents, users CASCADE');
     console.log('  ✅ Tables cleared\n');
 
     // Seed

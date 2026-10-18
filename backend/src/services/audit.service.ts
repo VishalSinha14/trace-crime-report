@@ -1,4 +1,5 @@
 import { query } from '../utils/db';
+import type { PoolClient } from 'pg';
 
 interface AuditParams {
   userId?: string | null;
@@ -28,4 +29,20 @@ export async function logAudit(params: AuditParams): Promise<void> {
   } catch (err) {
     console.error('Failed to write audit log:', err);
   }
+}
+
+export async function logAuditWithClient(client: PoolClient, params: AuditParams): Promise<void> {
+  await client.query(
+    `INSERT INTO audit_logs (user_id, action, entity_type, entity_id, metadata, ip_address, user_agent)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      params.userId || null,
+      params.action,
+      params.entityType || null,
+      params.entityId || null,
+      params.metadata ? JSON.stringify(params.metadata) : null,
+      params.ipAddress || null,
+      params.userAgent || null,
+    ]
+  );
 }

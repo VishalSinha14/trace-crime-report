@@ -58,7 +58,9 @@ export async function getMapIncidents(req: Request, res: Response): Promise<void
       latitude,
       longitude,
       location_area,
-      occurred_at
+      occurred_at,
+      credibility_score,
+      (SELECT COUNT(*) FROM corroborations c WHERE c.incident_id = incidents.id)::int AS corroboration_count
     FROM incidents
     WHERE ${conditions.join(' AND ')}
     ORDER BY occurred_at DESC

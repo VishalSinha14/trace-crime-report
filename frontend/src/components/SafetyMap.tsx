@@ -3,6 +3,13 @@ import L from 'leaflet';
 import { Incident } from '../services/api';
 import { RouteResult } from './SafeRoutePanel';
 
+// Global corroborate callback invoked from Leaflet popup HTML buttons
+declare global {
+  interface Window {
+    traceCorroborate?: (incidentId: string) => void;
+  }
+}
+
 interface SafetyMapProps {
   incidents: Incident[];
   selectedIncident: Incident | null;
@@ -20,6 +27,9 @@ interface SafetyMapProps {
   routeResults?: RouteResult[] | null;
   activeRouteIndex?: number;
   onSetRoutePoint?: (loc: { lat: number; lng: number }) => void;
+  // Corroboration callback — triggered from Leaflet popup
+  onCorroborateFromMap?: (incidentId: string) => void;
+  canCorroborate?: boolean;
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -31,6 +41,16 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 // Route line colors
 const ROUTE_COLORS = ['#22c55e', '#f59e0b', '#f97316']; // green, amber, orange
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character] as string);
+}
 
 export const SafetyMap: React.FC<SafetyMapProps> = ({
   incidents,
@@ -49,6 +69,8 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
   routeResults = null,
   activeRouteIndex = 0,
   onSetRoutePoint,
+  onCorroborateFromMap,
+  canCorroborate = false,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -60,10 +82,20 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
   const destMarkerRef = useRef<L.Marker | null>(null);
   const routeLayerRef = useRef<L.LayerGroup | null>(null);
   const hotspotLayerRef = useRef<L.LayerGroup | null>(null);
+  const corroborateCallbackRef = useRef(onCorroborateFromMap);
+
+  useEffect(() => {
+    corroborateCallbackRef.current = onCorroborateFromMap;
+  }, [onCorroborateFromMap]);
 
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
+
+    // Register global corroborate callback for use in Leaflet HTML popups
+    window.traceCorroborate = (incidentId: string) => {
+      corroborateCallbackRef.current?.(incidentId);
+    };
 
     const map = L.map(mapContainerRef.current, {
       center,
@@ -97,6 +129,7 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
     mapInstanceRef.current = map;
 
     return () => {
+      if (window.traceCorroborate) delete window.traceCorroborate;
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -361,7 +394,7 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
         <div style="font-family: system-ui, sans-serif; min-width: 220px; padding: 4px;">
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
             <span style="font-weight: 700; font-size: 13px; color: #0f172a; text-transform: uppercase;">
-              ${inc.category ? inc.category.replace('_', ' ') : 'INCIDENT'}
+              ${escapeHtml(inc.category ? inc.category.replace('_', ' ') : 'INCIDENT')}
             </span>
             <span style="
               font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px;
@@ -369,28 +402,39 @@ export const SafetyMap: React.FC<SafetyMapProps> = ({
             ">${inc.severity}</span>
           </div>
           <div style="font-size: 11px; color: #64748b; margin-bottom: 6px;">
-            📍 ${inc.location_area || 'Pune Metro Area'}
+            📍 ${escapeHtml(inc.location_area || 'Pune Metro Area')}
           </div>
           <p style="font-size: 12px; color: #334155; line-height: 1.4; margin-bottom: 8px;">
-            ${inc.description.length > 90 ? inc.description.slice(0, 90) + '...' : inc.description}
+            ${escapeHtml(inc.description.length > 90 ? inc.description.slice(0, 90) + '...' : inc.description)}
           </p>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8; margin-bottom: 8px;">
             <span>${new Date(inc.occurred_at).toLocaleDateString()}</span>
             <span style="color: ${inc.status === 'VERIFIED' ? '#16a34a' : '#ea580c'}; font-weight: 600;">
-              ${inc.status}
+              ${escapeHtml(inc.status)}
             </span>
           </div>
+          ${canCorroborate ? `<button
+            onclick="window.traceCorroborate && window.traceCorroborate('${inc.id}')"
+            style="
+              width: 100%; padding: 6px 0; border-radius: 8px;
+              background: #4f46e5; color: white; border: none;
+              font-size: 11px; font-weight: 700; cursor: pointer;
+              display: flex; align-items: center; justify-content: center; gap: 4px;
+            "
+          >
+            🤝 Witness This
+          </button>` : ''}
         </div>
       `;
 
-      marker.bindPopup(popupHtml);
+      marker.bindPopup(popupHtml, { maxWidth: 280 });
       marker.on('click', () => {
         onSelectIncident(inc);
       });
 
       markersLayer.addLayer(marker);
     });
-  }, [incidents, onSelectIncident]);
+  }, [incidents, onSelectIncident, canCorroborate]);
 
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl shadow-slate-950/70">

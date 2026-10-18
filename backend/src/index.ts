@@ -16,6 +16,7 @@ import safeRouteRoutes from './routes/saferoute.routes';
 import analyticsRoutes from './routes/analytics.routes';
 import notificationRoutes from './routes/notification.routes';
 import adminRoutes from './routes/admin.routes';
+import corroborationRoutes from './routes/corroboration.routes';
 
 // Load environment variables
 dotenv.config();
@@ -60,6 +61,7 @@ app.get('/api/health', async (_req, res) => {
 // ─── API Routes ─────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/incidents/:id', corroborationRoutes);
 app.use('/api/map', mapRoutes);
 app.use('/api/map', safeRouteRoutes);
 app.use('/api/analytics', analyticsRoutes);
