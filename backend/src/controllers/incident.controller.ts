@@ -369,7 +369,7 @@ export async function updateIncidentStatus(
   res: Response
 ): Promise<void> {
   const { id } = req.params;
-  const { status, moderation_notes, is_public } = req.body;
+  const { status, moderation_notes } = req.body;
   const user = req.user!;
 
   const client = await getClient();
@@ -387,7 +387,9 @@ export async function updateIncidentStatus(
     }
 
     const current = currentRes.rows[0];
-    const shouldBePublic = is_public !== undefined ? is_public : status === 'VERIFIED' || status === 'RESOLVED';
+    // Public visibility is derived from the lifecycle state. A moderator must
+    // not be able to publish a rejected or under-review report accidentally.
+    const shouldBePublic = status === 'VERIFIED';
 
     const updateRes = await client.query(
       `UPDATE incidents
@@ -462,10 +464,19 @@ export async function updateIncidentModeration(
   res: Response
 ): Promise<void> {
   const { id } = req.params;
-  const { category, severity, status, moderation_notes, is_public } = req.body;
+  const { category, severity, status, moderation_notes } = req.body;
   const user = req.user!;
 
   try {
+    const currentRes = await query('SELECT * FROM incidents WHERE id = $1', [id]);
+    if (currentRes.rows.length === 0) {
+      res.status(404).json({ error: 'Not Found', message: 'Incident not found.' });
+      return;
+    }
+
+    const current = currentRes.rows[0];
+    const effectiveStatus = status || current.status;
+    const effectiveIsPublic = effectiveStatus === 'VERIFIED';
     const fields: string[] = [];
     const params: unknown[] = [id];
     let idx = 2;
@@ -486,16 +497,13 @@ export async function updateIncidentModeration(
       fields.push(`moderation_notes = $${idx++}`);
       params.push(moderation_notes);
     }
-    if (is_public !== undefined) {
-      fields.push(`is_public = $${idx++}`);
-      params.push(is_public);
-    }
-
     if (fields.length === 0) {
       res.status(400).json({ error: 'Bad Request', message: 'No fields provided for update.' });
       return;
     }
 
+    fields.push(`is_public = $${idx++}`);
+    params.push(effectiveIsPublic);
     fields.push(`updated_at = NOW()`);
 
     const updateSql = `
@@ -506,11 +514,6 @@ export async function updateIncidentModeration(
     `;
 
     const resUpdate = await query(updateSql, params);
-    if (resUpdate.rows.length === 0) {
-      res.status(404).json({ error: 'Not Found', message: 'Incident not found.' });
-      return;
-    }
-
     const updated = resUpdate.rows[0];
 
     await logAudit({
@@ -518,10 +521,41 @@ export async function updateIncidentModeration(
       action: 'MODERATION_UPDATED',
       entityType: 'incidents',
       entityId: id,
-      metadata: { category, severity, status, moderation_notes, is_public },
+      metadata: {
+        category,
+        severity,
+        old_status: current.status,
+        new_status: effectiveStatus,
+        moderation_notes,
+        is_public: effectiveIsPublic,
+      },
       ipAddress: req.ip,
       userAgent: req.get('user-agent'),
     });
+
+    if (status && status !== current.status) {
+      await createNotification(
+        updated.user_id,
+        `Report Status Updated: ${status}`,
+        `Your report (#${id.substring(0, 8)}) status changed from ${current.status} to ${status}${
+          moderation_notes ? `. Note: ${moderation_notes}` : '.'
+        }`,
+        'STATUS_CHANGE',
+        id
+      );
+
+      if (status === 'VERIFIED') {
+        broadcastPublic('incident:verified', updated);
+      }
+      broadcastPublic('incident:visibility_changed', {
+        id: updated.id,
+        status: updated.status,
+        is_public: updated.is_public,
+      });
+      broadcastToRole('MODERATOR', 'incident:updated', updated);
+      broadcastToRole('ADMIN', 'incident:updated', updated);
+      broadcastToUser(updated.user_id, 'incident:my_update', updated);
+    }
 
     res.json({
       message: 'Incident moderation details updated.',

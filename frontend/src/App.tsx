@@ -148,11 +148,11 @@ export function App() {
         if (exists) return prev.map((inc) => (inc.id === newInc.id ? newInc : inc));
         return [newInc, ...prev];
       });
+    });
 
-      socket.on('incident:visibility_changed', (change: { id: string; status: Incident['status']; is_public: boolean }) => {
-        if (change.status === 'VERIFIED' && change.is_public) return;
-        setIncidents((prev) => prev.filter((incident) => incident.id !== change.id));
-      });
+    socket.on('incident:visibility_changed', (change: { id: string; status: Incident['status']; is_public: boolean }) => {
+      if (change.status === 'VERIFIED' && change.is_public) return;
+      setIncidents((prev) => prev.filter((incident) => incident.id !== change.id));
     });
 
     socket.on('incident:updated', (updatedInc: Incident) => {

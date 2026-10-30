@@ -99,8 +99,8 @@ async function runTests() {
       throw new Error('No public incidents returned');
     }
     for (const inc of incidents) {
-      if (inc.status !== 'VERIFIED' && !inc.is_public) {
-        throw new Error(`Unverified incident leaked to public: ${inc.id}`);
+      if (inc.status !== 'VERIFIED' || inc.is_public !== true) {
+        throw new Error(`Invalid public incident state: ${inc.id}`);
       }
       if (inc.reporter_email) {
         throw new Error(`Reporter email leaked to public: ${inc.reporter_email}`);

@@ -37,7 +37,6 @@ export const createIncidentSchema = z.object({
 export const updateIncidentStatusSchema = z.object({
   status: z.enum(incidentStatuses),
   moderation_notes: z.string().max(2000).optional().nullable(),
-  is_public: z.boolean().optional(),
 });
 
 export const updateIncidentModerationSchema = z.object({
@@ -45,7 +44,6 @@ export const updateIncidentModerationSchema = z.object({
   severity: z.enum(incidentSeverities).optional(),
   status: z.enum(incidentStatuses).optional(),
   moderation_notes: z.string().max(2000).optional().nullable(),
-  is_public: z.boolean().optional(),
 });
 
 export const queryIncidentsSchema = z.object({

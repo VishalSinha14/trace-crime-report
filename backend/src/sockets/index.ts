@@ -3,11 +3,16 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { verifyToken } from '../utils/auth';
 
 let io: SocketIOServer | null = null;
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
 
 export function initializeSockets(server: HttpServer): SocketIOServer {
   io = new SocketIOServer(server, {
     cors: {
-      origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin: allowedOrigins,
       methods: ['GET', 'POST'],
       credentials: true,
     },
